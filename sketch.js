@@ -1,139 +1,86 @@
 let handpose;
 let video;
 let predictions = [];
-let gameState = "PLAYING"; // PLAYING, RESULT, REPLAY
-let userChoice = "";
-let computerChoice = "";
-let resultText = "";
-let score = { win: 0, loss: 0, draw: 0 };
-let feedbackMessage = "請出拳...";
-
-const choices = ["✊", "✋", "✌️"];
+let gameState = "PLAYING"; // 遊戲狀態
 
 function setup() {
+  // 建立與截圖比例相符的畫布
   createCanvas(640, 480);
+  
+  // 啟動攝影機
   video = createCapture(VIDEO);
-  video.size(width, height);
+  video.size(640, 480);
+  video.hide(); // 隱藏原生 HTML 影片，我們要在畫布上畫
 
-  // 初始化 Handpose 模型
-  handpose = ml5.handpose(video, () => console.log("Model Ready!"));
+  // 初始化 ml5 handpose
+  handpose = ml5.handpose(video, modelReady);
 
-  // 持續追蹤手勢結果
+  // 當偵測到手部時，把資料存進 predictions 變數
   handpose.on("predict", results => {
     predictions = results;
   });
+}
 
-  video.hide();
-  textAlign(CENTER, CENTER);
+function modelReady() {
+  console.log("模型載入成功！");
 }
 
 function draw() {
-  // 1. 繪製視訊背景 (鏡像處理更直觀)
+  // 1. 畫出攝影機畫面 (鏡像處理)
   push();
   translate(width, 0);
   scale(-1, 1);
   image(video, 0, 0, width, height);
   pop();
 
-  // 2. 繪製手部關鍵點與骨架 (如截圖中的綠線)
-  drawHandKeypoints();
-
-  // 3. UI 頂部計分板
-  drawScoreBoard();
-
-  // 4. 根據遊戲狀態顯示畫面
-  if (gameState === "PLAYING") {
-    handleGameLogic();
-  } else if (gameState === "REPLAY") {
-    drawReplayScreen();
-  }
-}
-
-function drawHandKeypoints() {
+  // 2. 如果有偵測到手，就畫出骨架
   if (predictions.length > 0) {
-    let hand = predictions[0].landmarks;
-    stroke(0, 255, 150); // 綠色線條
-    strokeWeight(2);
-    noFill();
-    
-    // 這裡可以寫點與點之間的連線邏輯，或單純畫點
-    for (let i = 0; i < hand.length; i++) {
-      let [x, y] = hand[i];
-      ellipse(width - x, y, 8, 8); // 鏡像修正
-    }
-    
-    // 偵測當前手勢並更新提示
-    detectGesture(predictions[0]);
+    drawKeypoints();
+  }
+
+  // 3. 畫出 UI 介面
+  drawUI();
+}
+
+// 畫出綠色手部骨架 (像截圖那樣)
+function drawKeypoints() {
+  let prediction = predictions[0];
+  let landmarks = prediction.landmarks;
+
+  stroke(0, 255, 150); // 綠色線條
+  strokeWeight(3);
+  
+  // 畫出手指連線 (簡化版：連起指尖與指節)
+  for (let i = 0; i < landmarks.length; i++) {
+    let [x, y] = landmarks[i];
+    fill(255, 0, 0); // 關節點用紅點標示
+    noStroke();
+    ellipse(width - x, y, 8, 8); // 記得寬度要用 width-x 鏡像回來
   }
 }
 
-function detectGesture(prediction) {
-  const landmarks = prediction.landmarks;
-  // 簡單邏輯判定範例 (需根據指尖與指根高度比較)
-  // 這裡建議引用自定義的手勢判斷函式
-  let gesture = checkRockPaperScissors(landmarks);
-  
-  if (gesture === "LIKE") {
-    feedbackMessage = "請換個手勢：👍";
-  } else {
-    feedbackMessage = "✊ 石頭  ✋ 布  ✌️ 剪刀";
+// 畫出截圖中的提示文字與按鈕
+function drawUI() {
+  if (gameState === "PLAYING") {
+    // 中央提示
+    textAlign(CENTER);
+    fill(255, 204, 0);
+    textSize(32);
+    text("請換個手勢：👍", width / 2, height * 0.65);
+
+    // 下方警告標籤
+    fill(0, 150);
+    noStroke();
+    rect(width / 2 - 150, height * 0.75, 300, 40, 20);
+    fill(255);
+    textSize(16);
+    text("⚠️ 這是功能鍵，請比出拳手勢", width / 2, height * 0.75 + 25);
   }
-}
 
-function drawScoreBoard() {
+  // 右上角計分板
   fill(0, 150);
-  noStroke();
-  rect(width - 120, 10, 110, 40, 5);
-  fill(255);
-  textSize(16);
-  text(`✅ ${score.win} 勝  ❌ ${score.loss}`, width - 65, 30);
-}
-
-function handleGameLogic() {
-  // 顯示中間的提示文字
-  fill(255, 204, 0);
-  textSize(24);
-  text(feedbackMessage, width / 2, height * 0.7);
-  
-  // 警告提示標籤
-  fill(0, 180);
-  rect(width/2 - 120, height * 0.8, 240, 30, 15);
-  fill(255);
-  textSize(14);
-  text("⚠️ 這是功能鍵，請比出拳手勢", width/2, height * 0.8 + 15);
-}
-
-function drawReplayScreen() {
-  // 黑色半透明遮罩
-  fill(0, 150);
-  rect(0, 0, width, height);
-
-  fill(255);
-  textSize(48);
-  text("再玩一局？", width / 2, height / 2 - 50);
-
-  // 繪製按鈕 (結束 / 繼續)
-  drawButton(width / 2 - 100, height / 2 + 50, "🏠 結束", "#E74C3C");
-  drawButton(width / 2 + 100, height / 2 + 50, "🎮 繼續", "#2ECC71");
-  
-  // 下方小字提示
-  textSize(14);
-  text("💡 右手比 👍 繼續 · 左手比 👍 結束", width/2, height / 2 + 120);
-}
-
-function drawButton(x, y, label, col) {
-  fill(col);
-  rectMode(CENTER);
-  rect(x, y, 120, 50, 25);
+  rect(width - 130, 20, 110, 45, 5);
   fill(255);
   textSize(18);
-  text(label, x, y);
-  rectMode(CORNER);
-}
-
-// 輔助函式：判斷手勢 (需更精密的座標計算)
-function checkRockPaperScissors(landmarks) {
-  // 這裡需要撰寫各手指尖端(8, 12, 16, 20)與指根位置的比較
-  // 回傳 "ROCK", "PAPER", "SCISSORS", "LIKE"
-  return "UNKNOWN";
+  text("✅ 1勝", width - 75, 50);
 }
